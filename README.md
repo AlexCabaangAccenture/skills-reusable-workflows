@@ -1,78 +1,26 @@
-<header>
-
 <!--
-  <<< Author notes: Course header >>>
-  Read <https://skills.github.com/quickstart> for more information about how to build courses using this template.
-  Include a 1280×640 image, course name in sentence case, and a concise description in emphasis.
-  In your repository settings: enable template repository, add your 1280×640 social image, auto delete head branches.
-  Next to "About", add description & tags; disable releases, packages, & environments.
-  Add your open source license, GitHub uses MIT license.
+  <<< Author notes: Finish >>>
+  Review what we learned, ask for feedback, provide next steps.
 -->
 
-# Reusable workflows and matrix strategies
+## Finish
 
-_Make a workflow reusable, call it in another workflow, and use a matrix strategy to run multiple versions._
+_Congratulations friend, you've completed this course!_ 🎉
 
-</header>
+<img src="https://octodex.github.com/images/skatetocat.png" alt=celebrate width=300 align=right>
 
-<!--
-  <<< Author notes: Step 1 >>>
-  Choose 3-5 steps for your course.
-  The first step is always the hardest, so pick something easy!
-  Link to docs.github.com for further explanations.
-  Encourage users to open new tabs for steps!
--->
+Here's a recap of all the tasks you've accomplished in your repository:
 
-## Step 1: Make a workflow reusable
+- You made a workflow reusable by using the `workflow_call` event trigger
+- You created a new job in a separate workflow to call the reusable workflow
+- You added a matrix strategy to run a job on multiple node versions
+- You navigated through the Actions logs to view the workflow runs and results from specific jobs
 
-_Welcome to "Reusable Workflows and Matrix Strategies"! :wave:_
+### What's next?
 
-You can do a lot with GitHub Actions! You can automate repetitive tasks, build continuous integration and continuous deployment pipelines, and customize essentially any part of your software development workflow. It doesn't matter if you're just learning about workflows and GitHub Actions for the first time or you're well exerpienced with the process, you'll quickly find yourself repeating automation jobs and steps within the same workflow, and even using the dreaded copy and paste method for workflows across multiple repositories.
-
-Is there a solution to reduce these repetitive tasks? Yes, I'm glad you asked :wink: Enter **reusable workflows**, a simple and powerful way to avoid copying and pasting workflows across your repositories.
-
-**What are the benefits of using reusable workflows?**: Reusable workflows are … reusable. Reusable workflows let you DRY (don’t repeat yourself) your Actions configurations, so you don’t need to copy and paste your workflows from one repository to another.
-
-- Case in point: if you have three different Node applications and you’re building them all the same way, you can use one reusable workflow instead of copying and pasting your workflows again and again.
-
-**I have a workflow, how do I make it reusable?**: A reusable workflow is just like any GitHub Actions workflow with one key difference: it includes a `workflow_call` event trigger, similar to event triggers like `push`, `issues`, and `workflow_dispatch`. This means that all you need to do to make a workflow reusable is to use the workflow call trigger.
-
-Let's get started with our first step to see how this would work!
-
-### :keyboard: Activity: Add a `workflow_call` trigger to a workflow
-
-1. Open a new browser tab, and navigate to this same repository. Then, work on the steps in your second tab while you read the instructions in this tab.
-1. Navigate to the **Code** tab.
-1. From the **main** branch dropdown, click on the **reusable-workflow** branch.
-1. Navigate to the `.github/workflows/` folder, then select the **reusable-workflow.yml** file.
-1. Replace the `workflow_dispatch` event trigger with the `workflow_call` event trigger. It should look like the following:
-
-   ```yaml
-   name: Reusable Workflow
-
-   on:
-     workflow_call:
-       inputs:
-         node:
-           required: true
-           type: string
-   ```
-
-1. To commit your changes, click **Start commit**, and then **Commit changes**.
-1. (optional) Create a pull request to view all the changes you'll make throughout this course. Click the **Pull Requests** tab, click **New pull request**, set `base: main` and `compare: reusable-workflow`.
-1. Wait about 20 seconds for actions to run, then refresh this page (the one you're following instructions from) and an action will automatically close this step and open the next one.
-
-<footer>
-
-<!--
-  <<< Author notes: Footer >>>
-  Add a link to get support, GitHub status page, code of conduct, license link.
--->
-
----
-
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/reusable-workflows) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
-
-&copy; 2023 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
-
-</footer>
+- Learn more about GitHub Actions by reading "[Learn GitHub Actions](https://docs.github.com/actions/learn-github-actions)".
+- Use actions created by others in [awesome-actions](https://github.com/sdras/awesome-actions).
+- We'd love to hear what you thought of this course [in our discussion board](https://github.com/orgs/skills/discussions/categories/reusable-workflows).
+- [Take another GitHub Skills course](https://github.com/skills).
+- Learn more about GitHub by reading the "[Get started](https://docs.github.com/get-started)" docs.
+- To find projects to contribute to, check out [GitHub Explore](https://github.com/explore).
