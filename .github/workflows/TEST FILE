@@ -1,24 +1,18 @@
-using DotLiquid;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace CAT.App.D365.Service.Core.Utilities
 {
-    public class DataAreaIDTag: DotLiquid.Tag
+    public static class LiquidTemplateFiltersExtensions
     {
-        private string dataAreaId;
-        public override void Initialize(string tagName, string markup, List<string> tokens)
+        public static string TrimLeadingZeros(string input)
         {
-            base.Initialize(tagName, markup, tokens);
-            dataAreaId = markup;
-        }
-
-        public override void Render(Context context, TextWriter result)
-        {
-            result.Write(dataAreaId );
+            if(string.IsNullOrEmpty(input)) return input;
+            return Regex.Replace(input, "^0+", "");
         }
     }
 }
