@@ -1,222 +1,135 @@
 using CAT.App.D365.Service.Core.Models;
+using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CAT.App.D365.Service.Core.Utilities
 {
-    public static class MessageProcessorHelper
+    public class ServiceBusMessageResponseConverter : JsonConverter<ServiceBusMessageResponse>
     {
-        public static Dictionary<string, string> GetMatches(Dictionary<string, object> criteria, Dictionary<string, object> target)
+        public override ServiceBusMessageResponse ReadJson(JsonReader reader, Type objectType, ServiceBusMessageResponse? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            var match = new Dictionary<string, string>();
-
-            // Iterate through criteria types
-            foreach (var type in criteria.Keys.Select(key => key.Split('.')[0]).Distinct())
+            try
             {
-                var typeCriteria = criteria
-                    .Where(kvp => kvp.Key.StartsWith($"{type}."))
-                    .ToDictionary(kvp => kvp.Key.Substring(type.Length + 1), kvp => kvp.Value);
-
-                if (MatchesCriteria(typeCriteria, target))
+                var jsonObject = JObject.Load(reader);
+                var response = new ServiceBusMessageResponse
                 {
-                    if (!match.ContainsKey(type))
-                    {
-                        match[type] = string.Empty;
-                    }
-
-                    match[type] = JsonConvert.SerializeObject(target);
-                }
-
-                if (match.Count > 0)
-                {
-                    continue; // match found. return the value
-                }
+                    BusinessEventId = jsonObject["BusinessEventId"]?.ToString(),
+                    BusinessEventLegalEntity = jsonObject["BusinessEventLegalEntity"]?.ToString(),
+                    ContextRecordSubject = jsonObject["ContextRecordSubject"]?.ToString(),
+                    ControlNumber = jsonObject["ControlNumber"]?.ToString(),
+                    curdoc = jsonObject["curdoc"]?.ToString(),
+                    JournalName = jsonObject["doccode"]?.ToString() ?? jsonObject["JournalName"]?.ToString(),
+                    linenumber = jsonObject["linenumber"]?.ToString(),
+                    docdate = jsonObject["docdate"]?.ToString(),
+                    docnum = jsonObject["docnum"]?.ToString(),
+                    EventId = jsonObject["EventId"]?.ToString(),
+                    EventTime = jsonObject["EventTime"]?.ToString(),
+                    EventTimeIso8601 = jsonObject["EventTimeIso8601"]?.ToString(),
+                    InitiatingUserAADObjectId = jsonObject["InitiatingUserAADObjectId"]?.ToString(),
+                    Key = jsonObject["Key"]?.ToObject<Key>(serializer),
+                    MajorVersion = jsonObject["MajorVersion"]?.ToObject<int?>(),
+                    MinorVersion = jsonObject["MinorVersion"]?.ToObject<int?>(),
+                    origdoccode = jsonObject["origdoccode"]?.ToString(),
+                    origdocnum = jsonObject["origdocnum"]?.ToString(),
+                    ParentContextRecordSubjects = jsonObject["ParentContextRecordSubjects"]?.ToObject<List<string>>(),
+                    Reference1 = jsonObject["ref1"]?.ToString() ?? jsonObject["Reference1"]?.ToString(),
+                    Reference2 = jsonObject["ref2"]?.ToString() ?? jsonObject["Reference2"]?.ToString(),
+                    Reference3 = jsonObject["ref3"]?.ToString() ?? jsonObject["Reference3"]?.ToString(),
+                    Reference4 = jsonObject["ref4"]?.ToString() ?? jsonObject["Reference4"]?.ToString(),
+                    Reference5 = jsonObject["ref5"]?.ToString() ?? jsonObject["Reference5"]?.ToString(),
+                    Reference6 = jsonObject["ref6"]?.ToString() ?? jsonObject["Reference6"]?.ToString(),
+                    timestamp = jsonObject["timestamp"]?.ToString(),
+                    username = jsonObject["username"]?.ToString(),
+                    value = jsonObject["value"]?.ToObject<double?>() ?? jsonObject["Value"]?.ToObject<double?>(),
+                    valuedoc = jsonObject["valuedoc"]?.ToObject<double?>() ?? jsonObject["Valuedoc"]?.ToObject<double?>(),
+                    xref = jsonObject["xref"]?.ToString(),
+                    xrefname = jsonObject["xrefname"]?.ToString()
+                };
+                return response;
             }
-
-            return match;
-        }
-
-        public static Dictionary<string, object> FlattenCriteria(Dictionary<string, Dictionary<string, object>> criteria)
-        {
-            var flattened = new Dictionary<string, object>();
-
-            foreach (var type in criteria)
+            catch (Exception Ex)
             {
-                foreach (var kvp in type.Value)
-                {
-                    var flattenedKey = $"{type.Key}.{kvp.Key}";
-                    flattened[flattenedKey] = kvp.Value;
-                }
-            }
 
-            return flattened;
-        }
-
-        public static Dictionary<string, Dictionary<string, object>> ConvertCriteriaToDictionary(string transactionType, IRequestCriteria request)
-        {
-            var result = new Dictionary<string, Dictionary<string, object>>();
-            var reqType = request.GetType();
-
-            if (transactionType.ToLower() == TransactionTypes.EMSFI.ToLower() && reqType == typeof(EMSFICriteriaRequest))
-            {
-                var emsfiReq = (EMSFICriteriaRequest)request;
-                AddObjectToDictionary("Costs", emsfiReq.Costs, result);
-                AddObjectToDictionary("Cancel_Costs", emsfiReq.Cancel_Costs, result);
-                AddObjectToDictionary("Matched_Payments", emsfiReq.Matched_Payments, result);
-                AddObjectToDictionary("Unmatched_Payments", emsfiReq.Unmatched_Payments, result);
-            }
-            else if (transactionType.ToLower() == TransactionTypes.NOTES.ToLower() && reqType == typeof(NotesCriteriaRequest))
-            {
-                var notesReq = (NotesCriteriaRequest)request;
-                AddObjectToDictionary("Notes", notesReq, result);
-            }
-            else
-            {
-                AddObjectToDictionary("General", request, result);
-            }
-
-
-            return result;
-        }
-
-        public static Dictionary<string, object?> ConvertToDictionary(object obj)
-        {
-            var dictionary = new Dictionary<string, object?>();
-            foreach (PropertyInfo property in obj.GetType().GetProperties())
-            {
-                var value = property.GetValue(obj);
-                dictionary[property.Name] = value;
-            }
-            return dictionary;
-        }
-
-        private static bool MatchesCriteria(Dictionary<string, object> criteria, Dictionary<string, object> target)
-        {
-            if (criteria.Count == 0)
-            {
-                return true; // No criteria to match against.
-            }
-
-            foreach (var kvp in criteria)
-            {
-                if (kvp.Key.ToLower() == MessageFields.LINE_SENSE_FIELD.ToLower())
-                {
-                    var amountValue = target[MessageFields.VALUE_FIELD];
-                    var lineSenseValue = kvp.Value;
-                    
-                    if ((double.TryParse(amountValue.ToString(), out double dblAmountValue) && lineSenseValue.ToString().ToLower() == LineSenseTypes.DEBIT && dblAmountValue > 0)
-                            || (lineSenseValue.ToString().ToLower() == LineSenseTypes.CREDIT && dblAmountValue < 0)
-                        )
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-
-                if (!target.ContainsKey(kvp.Key))
-                {
-                    return false;
-                }
-
-                var targetValue = target[kvp.Key];
-                var criteriaValue = kvp.Value;
-
-                if (!ValuesMatch(criteriaValue, targetValue))
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private static bool ValuesMatch(object criteriaValue, object targetValue)
-        {
-
-            // Check if criteriaValue is an array
-            if (criteriaValue is Array criteriaArray)
-            {
-                // Convert criteriaArray to a List<object>
-                var criteriaList = criteriaArray.Cast<object>().ToList();
-
-                return criteriaList.Contains(targetValue);
-            }
-            else
-            {
-                // Direct comparison for non-array values
-                return Equals(criteriaValue, targetValue);
+                return null;
             }
         }
 
-        private static void AddObjectToDictionary(string key, object obj, Dictionary<string, Dictionary<string, object>> dictionary)
+        public override void WriteJson(JsonWriter writer, ServiceBusMessageResponse? value, JsonSerializer serializer)
         {
-            if (obj == null)
+            writer.WriteStartObject();
+            writer.WritePropertyName("BusinessEventId");
+            writer.WriteValue(value?.BusinessEventId);
+            writer.WritePropertyName("BusinessEventLegalEntity");
+            writer.WriteValue(value?.BusinessEventLegalEntity);
+            writer.WritePropertyName("ContextRecordSubject");
+            writer.WriteValue(value?.ContextRecordSubject);
+            writer.WritePropertyName("ControlNumber");
+            writer.WriteValue(value?.ControlNumber);
+            writer.WritePropertyName("curdoc");
+            writer.WriteValue(value?.curdoc);
+            writer.WritePropertyName("doccode");
+            writer.WriteValue(value?.JournalName);
+            writer.WritePropertyName("linenumber");
+            writer.WriteValue(value?.linenumber);
+            writer.WritePropertyName("docdate");
+            writer.WriteValue(value?.docdate);
+            writer.WritePropertyName("docnum");
+            writer.WriteValue(value?.docnum);
+            writer.WritePropertyName("EventId");
+            writer.WriteValue(value?.EventId);
+            writer.WritePropertyName("EventTime");
+            writer.WriteValue(value?.EventTime);
+            writer.WritePropertyName("EventTimeIso8601");
+            writer.WriteValue(value?.EventTimeIso8601);
+            writer.WritePropertyName("InitiatingUserAADObjectId");
+            writer.WriteValue(value?.InitiatingUserAADObjectId);
+
+            if (value?.Key != null)
             {
-                dictionary[key] = new Dictionary<string, object>();
-                return;
+                writer.WritePropertyName("Key");
+                serializer.Serialize(writer, value?.Key);
             }
 
-            var nestedDictionary = new Dictionary<string, object>();
-            foreach (var prop in obj.GetType().GetProperties())
-            {
-                var value = prop.GetValue(obj);
+            writer.WritePropertyName("MajorVersion");
+            writer.WriteValue(value?.MajorVersion);
+            writer.WritePropertyName("MinorVersion");
+            writer.WriteValue(value?.MinorVersion);
+            writer.WritePropertyName("origdoccode");
+            writer.WriteValue(value?.origdoccode);
+            writer.WritePropertyName("origdocnum");
+            writer.WriteValue(value?.origdocnum);
 
-                if (value is Array array)
-                {
-                    nestedDictionary[prop.Name] = array;
-                }
-                else if (value is string str)
-                {
-                    nestedDictionary[prop.Name] = str;
-                }
-                else
-                {
-                    // Handle nested objects recursively
-                    AddObjectToDictionary(prop.Name, value, nestedDictionary);
-                }
+            if (value?.ParentContextRecordSubjects != null)
+            {
+                writer.WritePropertyName("ParentContextRecordSubjects");
+                serializer.Serialize(writer, value?.ParentContextRecordSubjects);
             }
 
-            dictionary[key] = nestedDictionary;
+            writer.WritePropertyName("ref1");
+            writer.WriteValue(value?.Reference1);
+            writer.WritePropertyName("ref2");
+            writer.WriteValue(value?.Reference2);
+            writer.WritePropertyName("ref3");
+            writer.WriteValue(value?.Reference3);
+            writer.WritePropertyName("ref4");
+            writer.WriteValue(value?.Reference4);
+            writer.WritePropertyName("ref5");
+            writer.WriteValue(value?.Reference5);
+            writer.WritePropertyName("ref6");
+            writer.WriteValue(value?.Reference6);
+            writer.WritePropertyName("timestamp");
+            writer.WriteValue(value?.timestamp);
+            writer.WritePropertyName("username");
+            writer.WriteValue(value?.username);
+            writer.WritePropertyName("value");
+            writer.WriteValue(value?.value);
+            writer.WritePropertyName("valuedoc");
+            writer.WriteValue(value?.valuedoc);
+            writer.WritePropertyName("xref");
+            writer.WriteValue(value?.xref);
+            writer.WritePropertyName("xrefname");
+            writer.WriteValue(value?.xrefname);
+            writer.WriteEndObject();
         }
-
-        private static void AddObjectToDictionary(string key, object obj, Dictionary<string, object> dictionary)
-        {
-            if (obj == null)
-            {
-                dictionary[key] = null;
-                return;
-            }
-
-            var nestedDictionary = new Dictionary<string, object>();
-            foreach (var prop in obj.GetType().GetProperties())
-            {
-                var value = prop.GetValue(obj);
-
-                if (value is Array array)
-                {
-                    nestedDictionary[prop.Name] = array;
-                }
-                else if (value is string str)
-                {
-                    nestedDictionary[prop.Name] = str;
-                }
-                else
-                {
-                    // Handle nested objects recursively
-                    AddObjectToDictionary(prop.Name, value, nestedDictionary);
-                }
-            }
-
-            dictionary[key] = nestedDictionary;
-        }
-
-        
     }
 }
