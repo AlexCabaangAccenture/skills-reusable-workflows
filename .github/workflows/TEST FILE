@@ -1,5 +1,4 @@
-
-using Newtonsoft.Json.Linq;
+using CAT.App.D365.Service.Core.Models;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -7,78 +6,217 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using CAT.App.D365.Service.Core.Utilities.Interface;
-using CAT.App.D365.Service.Core.Models;
-using DotLiquid;
-using Microsoft.Extensions.Configuration;
-using System.Text.Json.Nodes;
 
 namespace CAT.App.D365.Service.Core.Utilities
 {
-    public class LiquidTemplateService: ILiquidTemplateService
+    public static class MessageProcessorHelper
     {
-        private readonly IStorageAccountService _service;
-        private readonly IConfiguration _config;
-        private readonly string _containerName;
-
-        public LiquidTemplateService(IStorageAccountService service, IConfiguration config)
+        public static Dictionary<string, string> GetMatches(Dictionary<string, object> criteria, Dictionary<string, object> target)
         {
-            _service = service;
-            _config = config;
-            //TO DO: move the string <liquidtemplate> to contant as this will not change
-            //_url = _config[$"AppSettings:FinOpsApiBaseUrl"] ?? _config["FinOpsApiBaseUrl"];
-            _containerName = _config[$"AppSettings:ContainerName"] ?? _config["ContainerName"];//_config.GetSection("ContainerName").Value;
+            var match = new Dictionary<string, string>();
+
+            // Iterate through criteria types
+            foreach (var type in criteria.Keys.Select(key => key.Split('.')[0]).Distinct())
+            {
+                var typeCriteria = criteria
+                    .Where(kvp => kvp.Key.StartsWith($"{type}."))
+                    .ToDictionary(kvp => kvp.Key.Substring(type.Length + 1), kvp => kvp.Value);
+
+                if (MatchesCriteria(typeCriteria, target))
+                {
+                    if (!match.ContainsKey(type))
+                    {
+                        match[type] = string.Empty;
+                    }
+
+                    match[type] = JsonConvert.SerializeObject(target);
+                }
+
+                if (match.Count > 0)
+                {
+                    continue; // match found. return the value
+                }
+            }
+
+            return match;
         }
 
-        public async Task<string> GetLiquidTemplateAsync(string messageRequest, string templateName)
+        public static Dictionary<string, object> FlattenCriteria(Dictionary<string, Dictionary<string, object>> criteria)
         {
-            try
+            var flattened = new Dictionary<string, object>();
+
+            foreach (var type in criteria)
             {
-
-                BlobInformation blobInformation = new BlobInformation() { ContainerName = _containerName, TemplateName = templateName};
-
-
-                string stringTemplate = await _service.GetLiquidTemplateAsync(blobInformation);
-
-                JObject jsonObject = JsonConvert.DeserializeObject<JObject>(messageRequest);
-
-                var values = jsonObject.ToDictionary();
-                Template.RegisterFilter(typeof(LiquidTemplateFiltersExtensions));
-                Template template = Template.Parse(stringTemplate);
-                var jsonTransformed = template.Render(Hash.FromDictionary(values));
-
-                return jsonTransformed;
+                foreach (var kvp in type.Value)
+                {
+                    var flattenedKey = $"{type.Key}.{kvp.Key}";
+                    flattened[flattenedKey] = kvp.Value;
+                }
             }
-            catch (Exception ex)
+
+            return flattened;
+        }
+
+        public static Dictionary<string, Dictionary<string, object>> ConvertCriteriaToDictionary(string transactionType, IRequestCriteria request)
+        {
+            var result = new Dictionary<string, Dictionary<string, object>>();
+            var reqType = request.GetType();
+
+            if (transactionType.ToLower() == TransactionTypes.EMSFI.ToLower() && reqType == typeof(EMSFICriteriaRequest))
             {
-                throw new Exception(ex.Message);
+                var emsfiReq = (EMSFICriteriaRequest)request;
+                AddObjectToDictionary("Costs", emsfiReq.Costs, result);
+                AddObjectToDictionary("Cancel_Costs", emsfiReq.Cancel_Costs, result);
+                AddObjectToDictionary("Matched_Payments", emsfiReq.Matched_Payments, result);
+                AddObjectToDictionary("Unmatched_Payments", emsfiReq.Unmatched_Payments, result);
+            }
+            else if (transactionType.ToLower() == TransactionTypes.NOTES.ToLower() && reqType == typeof(NotesCriteriaRequest))
+            {
+                var notesReq = (NotesCriteriaRequest)request;
+                AddObjectToDictionary("Notes", notesReq, result);
+            }
+            else
+            {
+                AddObjectToDictionary("General", request, result);
+            }
+
+
+            return result;
+        }
+
+        public static Dictionary<string, object?> ConvertToDictionary(object obj)
+        {
+            var dictionary = new Dictionary<string, object?>();
+            foreach (PropertyInfo property in obj.GetType().GetProperties())
+            {
+                var value = property.GetValue(obj);
+                dictionary[property.Name] = value;
+            }
+            return dictionary;
+        }
+
+        private static bool MatchesCriteria(Dictionary<string, object> criteria, Dictionary<string, object> target)
+        {
+            if (criteria.Count == 0)
+            {
+                return true; // No criteria to match against.
+            }
+
+            foreach (var kvp in criteria)
+            {
+                if (kvp.Key.ToLower() == MessageFields.LINE_SENSE_FIELD.ToLower())
+                {
+                    var amountValue = target[MessageFields.VALUE_FIELD];
+                    var lineSenseValue = kvp.Value;
+                    
+                    if ((double.TryParse(amountValue.ToString(), out double dblAmountValue) && lineSenseValue.ToString().ToLower() == LineSenseTypes.DEBIT && dblAmountValue > 0)
+                            || (lineSenseValue.ToString().ToLower() == LineSenseTypes.CREDIT && dblAmountValue < 0)
+                        )
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+
+                if (!target.ContainsKey(kvp.Key))
+                {
+                    return false;
+                }
+
+                var targetValue = target[kvp.Key];
+                var criteriaValue = kvp.Value;
+
+                if (!ValuesMatch(criteriaValue, targetValue))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool ValuesMatch(object criteriaValue, object targetValue)
+        {
+
+            // Check if criteriaValue is an array
+            if (criteriaValue is Array criteriaArray)
+            {
+                // Convert criteriaArray to a List<object>
+                var criteriaList = criteriaArray.Cast<object>().ToList();
+
+                return criteriaList.Contains(targetValue);
+            }
+            else
+            {
+                // Direct comparison for non-array values
+                return Equals(criteriaValue, targetValue);
             }
         }
 
-        public async Task<string> GetLiquidTemplateAsync(string messageRequest, string templateName, string dataArea)
+        private static void AddObjectToDictionary(string key, object obj, Dictionary<string, Dictionary<string, object>> dictionary)
         {
-            try
+            if (obj == null)
             {
-
-                BlobInformation blobInformation = new BlobInformation() { ContainerName = _containerName, TemplateName = templateName };
-
-
-                string stringTemplate = await _service.GetLiquidTemplateAsync(blobInformation);
-
-                JObject jsonObject = JsonConvert.DeserializeObject<JObject>(messageRequest);
-
-                var values = jsonObject.ToDictionary();
-                //Template.RegisterFilter(typeof(LiquidTemplateFiltersExtensions));
-                Template template = Template.Parse(stringTemplate);
-                var jsonTransformed = template.Render(Hash.FromDictionary(values));
-
-                return jsonTransformed;
+                dictionary[key] = new Dictionary<string, object>();
+                return;
             }
-            catch (Exception ex)
+
+            var nestedDictionary = new Dictionary<string, object>();
+            foreach (var prop in obj.GetType().GetProperties())
             {
-                throw new Exception(ex.Message);
+                var value = prop.GetValue(obj);
+
+                if (value is Array array)
+                {
+                    nestedDictionary[prop.Name] = array;
+                }
+                else if (value is string str)
+                {
+                    nestedDictionary[prop.Name] = str;
+                }
+                else
+                {
+                    // Handle nested objects recursively
+                    AddObjectToDictionary(prop.Name, value, nestedDictionary);
+                }
             }
+
+            dictionary[key] = nestedDictionary;
         }
+
+        private static void AddObjectToDictionary(string key, object obj, Dictionary<string, object> dictionary)
+        {
+            if (obj == null)
+            {
+                dictionary[key] = null;
+                return;
+            }
+
+            var nestedDictionary = new Dictionary<string, object>();
+            foreach (var prop in obj.GetType().GetProperties())
+            {
+                var value = prop.GetValue(obj);
+
+                if (value is Array array)
+                {
+                    nestedDictionary[prop.Name] = array;
+                }
+                else if (value is string str)
+                {
+                    nestedDictionary[prop.Name] = str;
+                }
+                else
+                {
+                    // Handle nested objects recursively
+                    AddObjectToDictionary(prop.Name, value, nestedDictionary);
+                }
+            }
+
+            dictionary[key] = nestedDictionary;
+        }
+
+        
     }
 }
