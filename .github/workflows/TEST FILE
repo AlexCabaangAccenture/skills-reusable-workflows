@@ -1,18 +1,84 @@
+
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using CAT.App.D365.Service.Core.Utilities.Interface;
+using CAT.App.D365.Service.Core.Models;
+using DotLiquid;
+using Microsoft.Extensions.Configuration;
+using System.Text.Json.Nodes;
 
 namespace CAT.App.D365.Service.Core.Utilities
 {
-    public static class LiquidTemplateFiltersExtensions
+    public class LiquidTemplateService: ILiquidTemplateService
     {
-        public static string TrimLeadingZeros(string input)
+        private readonly IStorageAccountService _service;
+        private readonly IConfiguration _config;
+        private readonly string _containerName;
+
+        public LiquidTemplateService(IStorageAccountService service, IConfiguration config)
         {
-            if(string.IsNullOrEmpty(input)) return input;
-            return Regex.Replace(input, "^0+", "");
+            _service = service;
+            _config = config;
+            //TO DO: move the string <liquidtemplate> to contant as this will not change
+            //_url = _config[$"AppSettings:FinOpsApiBaseUrl"] ?? _config["FinOpsApiBaseUrl"];
+            _containerName = _config[$"AppSettings:ContainerName"] ?? _config["ContainerName"];//_config.GetSection("ContainerName").Value;
+        }
+
+        public async Task<string> GetLiquidTemplateAsync(string messageRequest, string templateName)
+        {
+            try
+            {
+
+                BlobInformation blobInformation = new BlobInformation() { ContainerName = _containerName, TemplateName = templateName};
+
+
+                string stringTemplate = await _service.GetLiquidTemplateAsync(blobInformation);
+
+                JObject jsonObject = JsonConvert.DeserializeObject<JObject>(messageRequest);
+
+                var values = jsonObject.ToDictionary();
+                Template.RegisterFilter(typeof(LiquidTemplateFiltersExtensions));
+                Template template = Template.Parse(stringTemplate);
+                var jsonTransformed = template.Render(Hash.FromDictionary(values));
+
+                return jsonTransformed;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
+        }
+
+        public async Task<string> GetLiquidTemplateAsync(string messageRequest, string templateName, string dataArea)
+        {
+            try
+            {
+
+                BlobInformation blobInformation = new BlobInformation() { ContainerName = _containerName, TemplateName = templateName };
+
+
+                string stringTemplate = await _service.GetLiquidTemplateAsync(blobInformation);
+
+                JObject jsonObject = JsonConvert.DeserializeObject<JObject>(messageRequest);
+
+                var values = jsonObject.ToDictionary();
+                //Template.RegisterFilter(typeof(LiquidTemplateFiltersExtensions));
+                Template template = Template.Parse(stringTemplate);
+                var jsonTransformed = template.Render(Hash.FromDictionary(values));
+
+                return jsonTransformed;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
         }
     }
 }
